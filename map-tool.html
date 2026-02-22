@@ -204,9 +204,11 @@
     const STORAGE_KEY = "forsaken.customMaps.v1";
     const state = { props: [] };
     let selectedIndex = -1;
+    let selectedIndices = [];
     const propMeshes = [];
     let lastPointerDown = { x: 0, y: 0 };
     let fineScaleActive = false;
+    let transformSession = null;
 
     const $ = (id) => document.getElementById(id);
     const status = $("status");
@@ -241,11 +243,13 @@
     transform.enabled = false;
     scene.add(transform);
     transform.addEventListener("dragging-changed", (e) => orbit.enabled = !e.value);
+    transform.addEventListener("mouseDown", () => beginTransformSession());
     transform.addEventListener("objectChange", () => {
-      syncSelectedFromMesh();
+      applyTransformSession();
       updateInspectorFromSelection();
       updateJson(false);
     });
+    transform.addEventListener("mouseUp", () => { transformSession = null; });
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.0));
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -259,6 +263,8 @@
     world.add(new THREE.AxesHelper(4));
 
     let ground = null;
+    const selectionPivot = new THREE.Object3D();
+    world.add(selectionPivot);
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
@@ -335,27 +341,52 @@
         propMeshes.push(mesh);
       });
 
-      if (selectedIndex >= state.props.length) selectedIndex = -1;
+      selectedIndices = selectedIndices.filter((i) => i >= 0 && i < state.props.length);
+      selectedIndex = selectedIndices.length ? selectedIndices[0] : -1;
       refreshSelectionVisual();
+    }
+
+    function updateSelectionPivotFromMeshes() {
+      const selectedMeshes = selectedIndices.map((i) => propMeshes[i]).filter(Boolean);
+      if (!selectedMeshes.length) return;
+
+      const box = new THREE.Box3();
+      selectedMeshes.forEach((mesh) => box.expandByObject(mesh));
+      const center = box.getCenter(new THREE.Vector3());
+      selectionPivot.position.copy(center);
+      selectionPivot.rotation.set(0, 0, 0);
+      selectionPivot.scale.set(1, 1, 1);
+      selectionPivot.updateMatrix();
     }
 
     function refreshSelectionVisual() {
       propMeshes.forEach((mesh, i) => {
-        mesh.material.emissive.setHex(i === selectedIndex ? 0x1d3b60 : 0x000000);
+        mesh.material.emissive.setHex(selectedIndices.includes(i) ? 0x1d3b60 : 0x000000);
       });
-      const mesh = propMeshes[selectedIndex];
-      if (mesh) {
+
+      if (selectedIndices.length) {
+        updateSelectionPivotFromMeshes();
         transform.enabled = true;
-        transform.attach(mesh);
+        transform.attach(selectionPivot);
       } else {
         transform.detach();
         transform.enabled = false;
       }
     }
 
-    function select(index, pushInputs = true) {
+    function select(index, pushInputs = true, additive = false) {
       if (index < -1 || index >= state.props.length) return;
-      selectedIndex = index;
+      if (additive && index >= 0) {
+        const idx = selectedIndices.indexOf(index);
+        if (idx >= 0) selectedIndices.splice(idx, 1);
+        else selectedIndices.push(index);
+      } else if (index >= 0) {
+        selectedIndices = [index];
+      } else {
+        selectedIndices = [];
+      }
+      selectedIndices.sort((a, b) => a - b);
+      selectedIndex = selectedIndices.length ? selectedIndices[0] : -1;
       refreshSelectionVisual();
       if (pushInputs) updateInspectorFromSelection();
     }
@@ -378,9 +409,9 @@
       $("p_d").value = p.size[3] ?? 12;
     }
 
-    function syncSelectedFromMesh() {
-      const p = state.props[selectedIndex];
-      const mesh = propMeshes[selectedIndex];
+    function syncPropFromMesh(index) {
+      const p = state.props[index];
+      const mesh = propMeshes[index];
       if (!p || !mesh) return;
 
       p.position = [
@@ -412,6 +443,48 @@
       }
     }
 
+    function syncSelectedFromMesh() {
+      selectedIndices.forEach((index) => syncPropFromMesh(index));
+    }
+
+    function beginTransformSession() {
+      if (!selectedIndices.length) return;
+      selectionPivot.updateMatrix();
+      transformSession = {
+        pivotMatrix: selectionPivot.matrix.clone(),
+        pivotMatrixInv: selectionPivot.matrix.clone().invert(),
+        meshes: selectedIndices.map((index) => {
+          const mesh = propMeshes[index];
+          mesh.updateMatrix();
+          return { index, matrix: mesh.matrix.clone() };
+        })
+      };
+    }
+
+    function applyTransformSession() {
+      if (!transformSession || !selectedIndices.length) return;
+
+      selectionPivot.updateMatrix();
+      const delta = selectionPivot.matrix.clone().multiply(transformSession.pivotMatrixInv);
+      const next = new THREE.Matrix4();
+      const pos = new THREE.Vector3();
+      const quat = new THREE.Quaternion();
+      const scl = new THREE.Vector3();
+
+      transformSession.meshes.forEach((entry) => {
+        const mesh = propMeshes[entry.index];
+        if (!mesh) return;
+        next.copy(delta).multiply(entry.matrix);
+        next.decompose(pos, quat, scl);
+        mesh.position.copy(pos);
+        mesh.quaternion.copy(quat);
+        mesh.scale.copy(scl);
+        mesh.updateMatrix();
+      });
+
+      syncSelectedFromMesh();
+    }
+
     function readInspectorProp() {
       const old = state.props[selectedIndex];
       if (!old) return null;
@@ -439,8 +512,10 @@
     }
 
     function deleteSelected() {
-      if (selectedIndex < 0) return;
-      state.props.splice(selectedIndex, 1);
+      if (!selectedIndices.length) return;
+      const sorted = [...selectedIndices].sort((a, b) => b - a);
+      sorted.forEach((idx) => state.props.splice(idx, 1));
+      selectedIndices = [];
       selectedIndex = -1;
       rebuildProps();
       updateJson();
@@ -448,16 +523,23 @@
     }
 
     function duplicateSelected() {
-      if (selectedIndex < 0) return;
+      if (!selectedIndices.length) return;
       // Snapshot current gizmo-ed transform first so duplicate uses exact live values.
       syncSelectedFromMesh();
-      const source = state.props[selectedIndex];
-      const copy = JSON.parse(JSON.stringify(source));
-      copy.position = [source.position[0], source.position[1], source.position[2]];
-      copy.rotation = [source.rotation[0], source.rotation[1], source.rotation[2]];
-      state.props.push(copy);
+      const sorted = [...selectedIndices].sort((a, b) => a - b);
+      const start = state.props.length;
+      sorted.forEach((idx) => {
+        const source = state.props[idx];
+        const copy = JSON.parse(JSON.stringify(source));
+        copy.position = [source.position[0], source.position[1], source.position[2]];
+        copy.rotation = [source.rotation[0], source.rotation[1], source.rotation[2]];
+        state.props.push(copy);
+      });
       rebuildProps();
-      select(state.props.length - 1);
+      selectedIndices = sorted.map((_, i) => start + i);
+      selectedIndex = selectedIndices[0] ?? -1;
+      refreshSelectionVisual();
+      updateInspectorFromSelection();
       updateJson();
       notify("Duplicated");
     }
@@ -539,7 +621,7 @@
     $("addCylinder").onclick = () => addProp("cylinder");
     $("duplicate").onclick = duplicateSelected;
     $("remove").onclick = deleteSelected;
-    $("frame").onclick = () => frame(selectedIndex >= 0 ? [propMeshes[selectedIndex]] : [ground, ...propMeshes].filter(Boolean));
+    $("frame").onclick = () => frame(selectedIndices.length ? selectedIndices.map((i) => propMeshes[i]).filter(Boolean) : [ground, ...propMeshes].filter(Boolean));
     $("toggleInspector").onclick = () => toggle("inspector");
     $("toggleMap").onclick = () => toggle("mapPanel");
     $("saveLib").onclick = saveToLibrary;
@@ -552,7 +634,7 @@
       if (!p) return;
       state.props[selectedIndex] = p;
       rebuildProps();
-      select(selectedIndex);
+      select(selectedIndex, true);
       updateJson();
       notify("Applied");
     };
@@ -571,9 +653,9 @@
       pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(propMeshes, false);
-      if (!hits.length) { select(-1); return; }
+      if (!hits.length) { if (!(e.ctrlKey || e.metaKey)) select(-1); return; }
       const idx = propMeshes.indexOf(hits[0].object);
-      if (idx >= 0) select(idx);
+      if (idx >= 0) select(idx, true, e.ctrlKey || e.metaKey);
     });
 
     window.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -608,7 +690,7 @@
       if (k === "j") { toggle("jsonBox"); return; }
 
       if (k === "f") {
-        frame(selectedIndex >= 0 ? [propMeshes[selectedIndex]] : [ground, ...propMeshes].filter(Boolean));
+        frame(selectedIndices.length ? selectedIndices.map((i) => propMeshes[i]).filter(Boolean) : [ground, ...propMeshes].filter(Boolean));
         return;
       }
 
@@ -621,6 +703,15 @@
       if (e.shiftKey && k === "a") { addProp("box"); return; }
       if (e.shiftKey && k === "c") { addProp("cylinder"); return; }
       if (e.shiftKey && k === "d") { e.preventDefault(); duplicateSelected(); return; }
+      if (e.ctrlKey && k === "a") {
+        e.preventDefault();
+        selectedIndices = state.props.map((_, i) => i);
+        selectedIndex = selectedIndices.length ? selectedIndices[0] : -1;
+        refreshSelectionVisual();
+        updateInspectorFromSelection();
+        notify("Selected all");
+        return;
+      }
 
       if (k === "delete" || k === "backspace") { e.preventDefault(); deleteSelected(); }
     });
@@ -659,7 +750,7 @@
     updateJson(true);
     frame([ground]);
     animate();
-    notify("Ready | Shift+A box | Shift+C cylinder | G/R/S | X/Y/Z | Ctrl+S save");
+    notify("Ready | Ctrl+Click multi-select | Shift+D duplicate selection | G/R/S | X/Y/Z | Ctrl+S save");
   </script>
 </body>
 </html>
