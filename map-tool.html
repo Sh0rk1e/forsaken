@@ -206,7 +206,6 @@
     let selectedIndex = -1;
     let selectedIndices = [];
     const propMeshes = [];
-    let lastPointerDown = { x: 0, y: 0 };
     let fineScaleActive = false;
     let transformSession = null;
 
@@ -639,23 +638,19 @@
       notify("Applied");
     };
 
-    // Selection via click (if no drag)
-    canvas.addEventListener("pointerdown", (e) => {
-      lastPointerDown = { x: e.clientX, y: e.clientY };
-    });
-    canvas.addEventListener("pointerup", (e) => {
-      const dx = Math.abs(e.clientX - lastPointerDown.x);
-      const dy = Math.abs(e.clientY - lastPointerDown.y);
-      if (dx > 4 || dy > 4) return;
-
+    // Selection via click
+    canvas.addEventListener("click", (e) => {
+      if (e.button !== 0) return;
+      if (transform.dragging) return;
+      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
       const rect = canvas.getBoundingClientRect();
       pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(propMeshes, false);
-      if (!hits.length) { if (!(e.ctrlKey || e.metaKey)) select(-1); return; }
+      if (!hits.length) { if (!additive) select(-1); return; }
       const idx = propMeshes.indexOf(hits[0].object);
-      if (idx >= 0) select(idx, true, e.ctrlKey || e.metaKey);
+      if (idx >= 0) select(idx, true, additive);
     });
 
     window.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -750,7 +745,7 @@
     updateJson(true);
     frame([ground]);
     animate();
-    notify("Ready | Ctrl+Click multi-select | Shift+D duplicate selection | G/R/S | X/Y/Z | Ctrl+S save");
+    notify("Ready | Ctrl/Shift+Click multi-select | Shift+D duplicate selection | G/R/S | X/Y/Z | Ctrl+S save");
   </script>
 </body>
 </html>
