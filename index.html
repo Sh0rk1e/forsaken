@@ -1,0 +1,241 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Roblox-Style Movement + Mobile Multi-Touch Joystick</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+<link rel="stylesheet" href="style.css">
+
+<script type="importmap">
+{
+  "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" }
+}
+</script>
+<script type="module" src="firebase.js"></script>
+<script type="module" src="script.js"></script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="loading">Loading player...</div>
+<!-- Notification Container -->
+<div id="notificationContainer"></div>
+
+<!-- Main Menu Button -->
+<button id="mainMenuBtn">Menu</button>
+
+<button id="chatToggleBtn">Chat</button>
+
+<!-- Health & Stamina Bars -->
+<div id="statsPanel">
+  <div id="healthBar" class="stat-bar">
+    <div id="healthFill" class="stat-fill"></div>
+    <span class="stat-label">Health: 100/100</span>
+  </div>
+  <div id="staminaBar" class="stat-bar">
+    <div id="staminaFill" class="stat-fill"></div>
+    <span class="stat-label">Stamina: 100/100</span>
+  </div>
+</div>
+
+<!-- Left joystick -->
+<div id="leftJoy">
+  <div class="stick" id="leftStick"></div>
+</div>
+
+<!-- Sprint Button (Mobile) -->
+<div id="sprintBtn">Sprint</div>
+
+<div id="touch-hint">Left: move | Right: look</div>
+
+<!-- Player List -->
+<div id="playerList">
+  <h3>Players Online</h3>
+  <div id="playerListContent"></div>
+</div>
+
+<!-- Chat -->
+<div id="chatBox">
+  <h3>Chat</h3>
+  <div id="chatMessages"></div>
+  <div id="chatInput">
+    <input type="text" id="chatField" placeholder="Say something..." maxlength="100">
+    <button id="chatSend">Send</button>
+  </div>
+</div>
+
+<!-- Emotes -->
+<div id="emotesPanel">
+  <button class="emote-btn" data-emote="wave">Wave</button>
+  <button class="emote-btn" data-emote="thumbs">Thumbs</button>
+  <button class="emote-btn" data-emote="laugh">Laugh</button>
+  <button class="emote-btn" data-emote="point">Point</button>
+</div>
+
+<!-- Settings menu -->
+<div id="settingsOverlay">
+  <div id="settingsMenu">
+    <h2>Settings</h2>
+    <div class="setting-row">
+      <label>Mouse Sensitivity</label>
+      <div class="slider-container">
+        <input type="range" id="mouseSensitivity" min="0.5" max="3" step="0.1" value="1">
+      </div>
+    </div>
+    <div class="setting-row">
+      <label>Gamepad Deadzone</label>
+      <div class="slider-container">
+        <input type="range" id="gamepadDeadzone" min="0" max="0.5" step="0.05" value="0.1">
+      </div>
+    </div>
+    <div class="setting-row">
+      <label>Gamepad Sensitivity</label>
+      <div class="slider-container">
+        <input type="range" id="gamepadSensitivity" min="0.5" max="3" step="0.1" value="1">
+      </div>
+    </div>
+    <div class="setting-row">
+      <label>Graphics Quality</label>
+      <select id="graphicsQuality">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+
+    <div class="button-group">
+      <button id="settingsClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Menu -->
+<div id="mainMenuOverlay">
+  <div id="mainMenu">
+    <div class="menu-options">
+      <button id="resumeGame" class="menu-btn primary">Resume Game</button>
+      <button id="openSettings" class="menu-btn">Settings</button>
+      <button id="openMaps" class="menu-btn">Maps</button>
+      <button id="openHelp" class="menu-btn">Help & Controls</button>
+      <button id="openCredits" class="menu-btn">Credits</button>
+      <button id="quitGame" class="menu-btn danger">Quit to Main Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Maps Menu -->
+<div id="mapsOverlay">
+  <div id="mapsMenu">
+    <h2>Choose Map</h2>
+    <div id="mapGrid" class="map-grid">
+      <button class="map-card" data-map="ruins">
+        <span class="map-title">Ruins Arena</span>
+        <span class="map-desc">Classic stone arena with pillars and walls.</span>
+      </button>
+      <button class="map-card" data-map="mesa">
+        <span class="map-title">Mesa Outpost</span>
+        <span class="map-desc">Wide orange canyon with bridges and plateaus.</span>
+      </button>
+    </div>
+    <div class="map-import">
+      <h3>Import Custom Map</h3>
+      <textarea id="mapJsonInput" placeholder="Paste exported map JSON here..."></textarea>
+      <div class="button-group">
+        <button id="importMapJson">Import JSON</button>
+        <button id="importMapFile">Import File</button>
+        <button id="openMapTool">Open Map Tool</button>
+      </div>
+      <input id="mapJsonFile" type="file" accept=".json,application/json" hidden>
+    </div>
+    <div class="button-group">
+      <button id="mapsClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help Menu -->
+<div id="helpOverlay">
+  <div id="helpMenu">
+    <h2>Help & Controls</h2>
+    <div class="help-content">
+      <div class="help-section">
+        <h3>Movement</h3>
+        <ul>
+          <li><strong>WASD</strong> - Move character</li>
+          <li><strong>Shift</strong> - Sprint (requires stamina)</li>
+          <li><strong>Mouse</strong> - Look around (right-click + drag)</li>
+          <li><strong>Mouse Wheel</strong> - Zoom in/out</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Mobile Controls</h3>
+        <ul>
+          <li><strong>Left Joystick</strong> - Move character</li>
+          <li><strong>Right Touch</strong> - Look around</li>
+          <li><strong>Sprint Button</strong> - Sprint</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Game Features</h3>
+        <ul>
+          <li><strong>Chat</strong> - Press Enter or click chat button</li>
+          <li><strong>Emotes</strong> - Click emote buttons to express yourself</li>
+          <li><strong>Settings</strong> - Adjust game preferences</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Gamepad Support</h3>
+        <ul>
+          <li><strong>Left Stick</strong> - Move character</li>
+          <li><strong>Right Stick</strong> - Look around</li>
+          <li><strong>Right Trigger</strong> - Sprint</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="helpClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Credits Menu -->
+<div id="creditsOverlay">
+  <div id="creditsMenu">
+    <h2>Credits</h2>
+    <div class="credits-content">
+      <div class="credit-section">
+        <h3>Art & Design</h3>
+        <p>3D Models: Myself / free3d.com</p>
+        <p>UI Design: Custom</p>
+      </div>
+
+      <div class="credit-section">
+        <h3>Development</h3>
+        <p>Three.js Framework</p>
+        <p>Firebase Multiplayer</p>
+      </div>
+
+      <div class="credit-section">
+        <h3>Audio</h3>
+        <p>None</p>
+      </div>
+
+      <div class="credit-section">
+        <h3>Special Thanks</h3>
+        <p>Three.js Community</p>
+        <p>Open Source Contributors</p>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="creditsClose">Close</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
+

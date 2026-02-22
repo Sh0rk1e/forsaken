@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forsaken Map Editor</title>
+  <style>
+    :root {
+      --bg: #0b0f18;
+      --panel: rgba(20, 27, 39, 0.92);
+      --line: rgba(120, 170, 255, 0.26);
+      --accent: #78c0ff;
+      --text: #dbe6ff;
+      --muted: #97a9cc;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+      user-select: none;
+    }
+    #viewport {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      cursor: default;
+    }
+    .dock {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 30;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      backdrop-filter: blur(6px);
+    }
+    .dock.right {
+      left: auto;
+      right: 12px;
+    }
+    .tool-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      font-size: 16px;
+      transition: 0.15s ease;
+    }
+    .tool-btn:hover { background: rgba(120, 192, 255, 0.18); border-color: rgba(120, 192, 255, 0.6); }
+    .panel {
+      position: fixed;
+      top: 56px;
+      right: 12px;
+      width: min(320px, 94vw);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      z-index: 35;
+      backdrop-filter: blur(8px);
+      display: none;
+    }
+    .panel.visible { display: block; }
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    input, textarea, button {
+      width: 100%;
+      background: rgba(9, 13, 21, 0.95);
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .row { display: flex; gap: 6px; margin-top: 6px; }
+    .status {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 30;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 11px;
+      backdrop-filter: blur(6px);
+      pointer-events: none;
+      max-width: calc(100vw - 24px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .json-box {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 54px;
+      height: min(40vh, 360px);
+      z-index: 36;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      backdrop-filter: blur(8px);
+      display: none;
+    }
+    .json-box.visible { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="viewport"></canvas>
+
+  <div class="dock" id="leftDock">
+    <button class="tool-btn" id="addBox" title="Add Box (Shift+A)">▧</button>
+    <button class="tool-btn" id="addCylinder" title="Add Cylinder (Shift+C)">◍</button>
+    <button class="tool-btn" id="duplicate" title="Duplicate (Shift+D)">⧉</button>
+    <button class="tool-btn" id="remove" title="Delete (Del)">⌫</button>
+    <button class="tool-btn" id="frame" title="Frame Selected/All (F)">⤢</button>
+  </div>
+
+  <div class="dock right" id="rightDock">
+    <button class="tool-btn" id="toggleInspector" title="Toggle Inspector (N)">⌘</button>
+    <button class="tool-btn" id="toggleMap" title="Toggle Map Settings (M)">◫</button>
+    <button class="tool-btn" id="saveLib" title="Save To Game Library (Ctrl+S)">⭳</button>
+    <button class="tool-btn" id="downloadJson" title="Export JSON (Ctrl+E)">⇩</button>
+    <button class="tool-btn" id="copyJson" title="Copy JSON (Ctrl+Shift+C)">⎘</button>
+    <button class="tool-btn" id="toggleJson" title="Show JSON (J)">{ }</button>
+  </div>
+
+  <div id="inspector" class="panel">
+    <div class="field-grid">
+      <input id="p_type" placeholder="type" disabled>
+      <input id="p_color" type="color" title="Color">
+      <input id="p_x" type="number" step="0.1" placeholder="X">
+      <input id="p_y" type="number" step="0.1" placeholder="Y">
+      <input id="p_z" type="number" step="0.1" placeholder="Z">
+      <input id="p_ry" type="number" step="1" placeholder="RotY">
+      <input id="p_a" type="number" step="0.1" placeholder="Size A">
+      <input id="p_b" type="number" step="0.1" placeholder="Size B">
+      <input id="p_c" type="number" step="0.1" placeholder="Size C">
+      <input id="p_d" type="number" step="1" placeholder="Size D">
+    </div>
+    <div class="row">
+      <button id="applyInspector">Apply</button>
+    </div>
+  </div>
+
+  <div id="mapPanel" class="panel" style="top: 56px; left: 12px; right: auto; width:min(360px,94vw);">
+    <div class="field-grid">
+      <input id="map_id" placeholder="map id" value="custom_map_1">
+      <input id="map_name" placeholder="map name" value="Custom Map">
+      <input id="map_desc" placeholder="description" value="Imported custom map.">
+      <input id="map_bg" type="color" value="#1a1d22">
+      <input id="map_gx" type="number" step="1" value="120" placeholder="ground x">
+      <input id="map_gz" type="number" step="1" value="120" placeholder="ground z">
+      <input id="map_gc" type="color" value="#2a2d32">
+    </div>
+    <div class="row">
+      <button id="applyMap">Apply Map Settings</button>
+    </div>
+  </div>
+
+  <div id="jsonBox" class="json-box">
+    <textarea id="jsonOutput"></textarea>
+  </div>
+
+  <div id="status" class="status">Ready</div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+    import { TransformControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/TransformControls.js";
+
+    const STORAGE_KEY = "forsaken.customMaps.v1";
+    const state = { props: [] };
+    let selectedIndex = -1;
+    const propMeshes = [];
+    let lastPointerDown = { x: 0, y: 0 };
+    let fineScaleActive = false;
+
+    const $ = (id) => document.getElementById(id);
+    const status = $("status");
+
+    const mapMeta = {
+      get id() { return $("map_id").value.trim() || "custom_map"; },
+      get name() { return $("map_name").value.trim() || "Custom Map"; },
+      get desc() { return $("map_desc").value.trim() || "Imported custom map."; },
+      get bg() { return $("map_bg").value; },
+      get gx() { return Math.max(30, Number($("map_gx").value) || 120); },
+      get gz() { return Math.max(30, Number($("map_gz").value) || 120); },
+      get gc() { return $("map_gc").value; }
+    };
+
+    const canvas = $("viewport");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(mapMeta.bg);
+
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2000);
+    camera.position.set(22, 16, 22);
+
+    const orbit = new OrbitControls(camera, canvas);
+    orbit.enableDamping = true;
+    orbit.dampingFactor = 0.08;
+    orbit.target.set(0, 0, 0);
+
+    const transform = new TransformControls(camera, canvas);
+    transform.setSize(0.9);
+    transform.enabled = false;
+    scene.add(transform);
+    transform.addEventListener("dragging-changed", (e) => orbit.enabled = !e.value);
+    transform.addEventListener("objectChange", () => {
+      syncSelectedFromMesh();
+      updateInspectorFromSelection();
+      updateJson(false);
+    });
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.0));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(18, 26, 12);
+    scene.add(dir);
+
+    const world = new THREE.Group();
+    scene.add(world);
+    const grid = new THREE.GridHelper(300, 150, 0x3b5d89, 0x223447);
+    world.add(grid);
+    world.add(new THREE.AxesHelper(4));
+
+    let ground = null;
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    function notify(msg) { status.textContent = msg; }
+
+    function slug(value) {
+      return String(value || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "custom_map";
+    }
+
+    function fitCanvas() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+
+    function createGround() {
+      if (ground) {
+        world.remove(ground);
+        ground.geometry.dispose();
+        ground.material.dispose();
+      }
+      ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(mapMeta.gx, mapMeta.gz),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(mapMeta.gc), transparent: true, opacity: 0.9 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      world.add(ground);
+      scene.background = new THREE.Color(mapMeta.bg);
+    }
+
+    function propToMesh(prop) {
+      const color = new THREE.Color(prop.color || "#8b8f98");
+      let geometry;
+      if (prop.type === "cylinder") {
+        geometry = new THREE.CylinderGeometry(
+          Math.max(0.2, prop.size[0] || 2),
+          Math.max(0.2, prop.size[1] || 2),
+          Math.max(0.2, prop.size[2] || 5),
+          Math.max(3, Math.floor(prop.size[3] || 12))
+        );
+      } else {
+        geometry = new THREE.BoxGeometry(
+          Math.max(0.2, prop.size[0] || 8),
+          Math.max(0.2, prop.size[1] || 3),
+          Math.max(0.2, prop.size[2] || 8)
+        );
+      }
+      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.78, metalness: 0.05 });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(prop.position[0], prop.position[1], prop.position[2]);
+      mesh.rotation.set(
+        (prop.rotation[0] || 0) * Math.PI / 180,
+        (prop.rotation[1] || 0) * Math.PI / 180,
+        (prop.rotation[2] || 0) * Math.PI / 180
+      );
+      mesh.userData.baseSize = [...prop.size];
+      return mesh;
+    }
+
+    function rebuildProps() {
+      propMeshes.forEach((mesh) => {
+        world.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      });
+      propMeshes.length = 0;
+
+      state.props.forEach((prop, i) => {
+        const mesh = propToMesh(prop);
+        mesh.userData.index = i;
+        world.add(mesh);
+        propMeshes.push(mesh);
+      });
+
+      if (selectedIndex >= state.props.length) selectedIndex = -1;
+      refreshSelectionVisual();
+    }
+
+    function refreshSelectionVisual() {
+      propMeshes.forEach((mesh, i) => {
+        mesh.material.emissive.setHex(i === selectedIndex ? 0x1d3b60 : 0x000000);
+      });
+      const mesh = propMeshes[selectedIndex];
+      if (mesh) {
+        transform.enabled = true;
+        transform.attach(mesh);
+      } else {
+        transform.detach();
+        transform.enabled = false;
+      }
+    }
+
+    function select(index, pushInputs = true) {
+      if (index < -1 || index >= state.props.length) return;
+      selectedIndex = index;
+      refreshSelectionVisual();
+      if (pushInputs) updateInspectorFromSelection();
+    }
+
+    function updateInspectorFromSelection() {
+      const p = state.props[selectedIndex];
+      if (!p) {
+        $("p_type").value = "";
+        return;
+      }
+      $("p_type").value = p.type;
+      $("p_color").value = p.color;
+      $("p_x").value = p.position[0];
+      $("p_y").value = p.position[1];
+      $("p_z").value = p.position[2];
+      $("p_ry").value = p.rotation[1];
+      $("p_a").value = p.size[0] ?? 0;
+      $("p_b").value = p.size[1] ?? 0;
+      $("p_c").value = p.size[2] ?? 0;
+      $("p_d").value = p.size[3] ?? 12;
+    }
+
+    function syncSelectedFromMesh() {
+      const p = state.props[selectedIndex];
+      const mesh = propMeshes[selectedIndex];
+      if (!p || !mesh) return;
+
+      p.position = [
+        Number(mesh.position.x.toFixed(4)),
+        Number(mesh.position.y.toFixed(4)),
+        Number(mesh.position.z.toFixed(4))
+      ];
+      p.rotation = [
+        Number((mesh.rotation.x * 180 / Math.PI).toFixed(4)),
+        Number((mesh.rotation.y * 180 / Math.PI).toFixed(4)),
+        Number((mesh.rotation.z * 180 / Math.PI).toFixed(4))
+      ];
+
+      const base = mesh.userData.baseSize || p.size;
+      if (p.type === "box") {
+        p.size = [
+          Number((Math.abs(mesh.scale.x) * (base[0] || 8)).toFixed(4)),
+          Number((Math.abs(mesh.scale.y) * (base[1] || 3)).toFixed(4)),
+          Number((Math.abs(mesh.scale.z) * (base[2] || 8)).toFixed(4))
+        ];
+      } else {
+        const radial = (Math.abs(mesh.scale.x) + Math.abs(mesh.scale.z)) * 0.5;
+        p.size = [
+          Number((radial * (base[0] || 2)).toFixed(4)),
+          Number((radial * (base[1] || 2)).toFixed(4)),
+          Number((Math.abs(mesh.scale.y) * (base[2] || 5)).toFixed(4)),
+          Math.max(3, Math.floor(base[3] || 12))
+        ];
+      }
+    }
+
+    function readInspectorProp() {
+      const old = state.props[selectedIndex];
+      if (!old) return null;
+      const type = old.type;
+      const p = {
+        type,
+        color: $("p_color").value,
+        position: [Number($("p_x").value) || 0, Number($("p_y").value) || 0, Number($("p_z").value) || 0],
+        rotation: [old.rotation?.[0] || 0, Number($("p_ry").value) || 0, old.rotation?.[2] || 0],
+        size: [Number($("p_a").value) || 0, Number($("p_b").value) || 0, Number($("p_c").value) || 0]
+      };
+      if (type === "cylinder") p.size.push(Math.max(3, Math.floor(Number($("p_d").value) || 12)));
+      return p;
+    }
+
+    function addProp(type = "box") {
+      const base = type === "cylinder"
+        ? { type: "cylinder", color: "#8b8f98", position: [0, 2, 0], rotation: [0, 0, 0], size: [2, 2, 5, 12] }
+        : { type: "box", color: "#8b8f98", position: [0, 1.5, 0], rotation: [0, 0, 0], size: [8, 3, 8] };
+      state.props.push(base);
+      rebuildProps();
+      select(state.props.length - 1);
+      updateJson();
+      notify(type === "box" ? "Box added" : "Cylinder added");
+    }
+
+    function deleteSelected() {
+      if (selectedIndex < 0) return;
+      state.props.splice(selectedIndex, 1);
+      selectedIndex = -1;
+      rebuildProps();
+      updateJson();
+      notify("Deleted");
+    }
+
+    function duplicateSelected() {
+      if (selectedIndex < 0) return;
+      // Snapshot current gizmo-ed transform first so duplicate uses exact live values.
+      syncSelectedFromMesh();
+      const source = state.props[selectedIndex];
+      const copy = JSON.parse(JSON.stringify(source));
+      copy.position = [source.position[0], source.position[1], source.position[2]];
+      copy.rotation = [source.rotation[0], source.rotation[1], source.rotation[2]];
+      state.props.push(copy);
+      rebuildProps();
+      select(state.props.length - 1);
+      updateJson();
+      notify("Duplicated");
+    }
+
+    function frame(objects) {
+      if (!objects.length) return;
+      const box = new THREE.Box3();
+      objects.forEach((o) => box.expandByObject(o));
+      if (box.isEmpty()) return;
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3()).length();
+      const dist = Math.max(10, size * 1.05);
+      orbit.target.copy(center);
+      camera.position.copy(center).add(new THREE.Vector3(dist * 0.8, dist * 0.55, dist * 0.8));
+      orbit.update();
+    }
+
+    function buildDefinition() {
+      return {
+        id: slug(mapMeta.id),
+        name: mapMeta.name || "Custom Map",
+        description: mapMeta.desc || "Imported custom map.",
+        background: mapMeta.bg,
+        ground: {
+          size: [mapMeta.gx, mapMeta.gz],
+          color: mapMeta.gc
+        },
+        props: state.props
+      };
+    }
+
+    function updateJson(rebuild = true) {
+      $("jsonOutput").value = JSON.stringify(buildDefinition(), null, 2);
+      if (rebuild) {
+        createGround();
+        rebuildProps();
+      }
+    }
+
+    function saveToLibrary() {
+      const def = buildDefinition();
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      const idx = saved.findIndex((entry) => entry.id === def.id);
+      const payload = { id: def.id, definition: def };
+      if (idx >= 0) saved[idx] = payload;
+      else saved.push(payload);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      notify(`Saved: ${def.id}`);
+    }
+
+    function downloadJson() {
+      const def = buildDefinition();
+      const text = JSON.stringify(def, null, 2);
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${def.id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify("JSON exported");
+    }
+
+    async function copyJson() {
+      try {
+        await navigator.clipboard.writeText($("jsonOutput").value);
+        notify("JSON copied");
+      } catch {
+        notify("Clipboard failed");
+      }
+    }
+
+    function toggle(id) {
+      $(id).classList.toggle("visible");
+    }
+
+    // UI buttons
+    $("addBox").onclick = () => addProp("box");
+    $("addCylinder").onclick = () => addProp("cylinder");
+    $("duplicate").onclick = duplicateSelected;
+    $("remove").onclick = deleteSelected;
+    $("frame").onclick = () => frame(selectedIndex >= 0 ? [propMeshes[selectedIndex]] : [ground, ...propMeshes].filter(Boolean));
+    $("toggleInspector").onclick = () => toggle("inspector");
+    $("toggleMap").onclick = () => toggle("mapPanel");
+    $("saveLib").onclick = saveToLibrary;
+    $("downloadJson").onclick = downloadJson;
+    $("copyJson").onclick = copyJson;
+    $("toggleJson").onclick = () => toggle("jsonBox");
+    $("applyMap").onclick = () => { updateJson(true); notify("Map settings applied"); };
+    $("applyInspector").onclick = () => {
+      const p = readInspectorProp();
+      if (!p) return;
+      state.props[selectedIndex] = p;
+      rebuildProps();
+      select(selectedIndex);
+      updateJson();
+      notify("Applied");
+    };
+
+    // Selection via click (if no drag)
+    canvas.addEventListener("pointerdown", (e) => {
+      lastPointerDown = { x: e.clientX, y: e.clientY };
+    });
+    canvas.addEventListener("pointerup", (e) => {
+      const dx = Math.abs(e.clientX - lastPointerDown.x);
+      const dy = Math.abs(e.clientY - lastPointerDown.y);
+      if (dx > 4 || dy > 4) return;
+
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(propMeshes, false);
+      if (!hits.length) { select(-1); return; }
+      const idx = propMeshes.indexOf(hits[0].object);
+      if (idx >= 0) select(idx);
+    });
+
+    window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // Blender-style hotkeys
+    function axisLock(axis) {
+      transform.showX = axis === "x";
+      transform.showY = axis === "y";
+      transform.showZ = axis === "z";
+      notify(`Axis lock: ${axis.toUpperCase()}`);
+    }
+    function axisClear() {
+      transform.showX = true;
+      transform.showY = true;
+      transform.showZ = true;
+      notify("Axis lock cleared");
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const typing = tag === "input" || tag === "textarea";
+      if (typing) return;
+
+      const k = e.key.toLowerCase();
+
+      if (e.ctrlKey && k === "s") { e.preventDefault(); saveToLibrary(); return; }
+      if (e.ctrlKey && k === "e") { e.preventDefault(); downloadJson(); return; }
+      if (e.ctrlKey && e.shiftKey && k === "c") { e.preventDefault(); copyJson(); return; }
+
+      if (k === "n") { toggle("inspector"); return; }
+      if (k === "m") { toggle("mapPanel"); return; }
+      if (k === "j") { toggle("jsonBox"); return; }
+
+      if (k === "f") {
+        frame(selectedIndex >= 0 ? [propMeshes[selectedIndex]] : [ground, ...propMeshes].filter(Boolean));
+        return;
+      }
+
+      if (k === "g") { transform.setMode("translate"); axisClear(); notify("Move mode"); return; }
+      if (k === "r") { transform.setMode("rotate"); axisClear(); notify("Rotate mode"); return; }
+      if (k === "s") { transform.setMode("scale"); axisClear(); notify("Scale mode"); return; }
+      if (k === "x" || k === "y" || k === "z") { axisLock(k); return; }
+      if (k === "escape") { axisClear(); return; }
+
+      if (e.shiftKey && k === "a") { addProp("box"); return; }
+      if (e.shiftKey && k === "c") { addProp("cylinder"); return; }
+      if (e.shiftKey && k === "d") { e.preventDefault(); duplicateSelected(); return; }
+
+      if (k === "delete" || k === "backspace") { e.preventDefault(); deleteSelected(); }
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "Shift") return;
+      fineScaleActive = true;
+      if (transform.mode === "scale") {
+        transform.setScaleSnap(0.01);
+        notify("Fine scale: ON");
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.key !== "Shift") return;
+      fineScaleActive = false;
+      transform.setScaleSnap(null);
+      if (transform.mode === "scale") {
+        notify("Fine scale: OFF");
+      }
+    });
+
+    // live json update on map fields
+    ["map_id", "map_name", "map_desc", "map_bg", "map_gx", "map_gz", "map_gc"].forEach((id) => {
+      $(id).addEventListener("input", () => updateJson(true));
+      $(id).addEventListener("change", () => updateJson(true));
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      fitCanvas();
+      orbit.update();
+      renderer.render(scene, camera);
+    }
+
+    updateJson(true);
+    frame([ground]);
+    animate();
+    notify("Ready | Shift+A box | Shift+C cylinder | G/R/S | X/Y/Z | Ctrl+S save");
+  </script>
+</body>
+</html>
