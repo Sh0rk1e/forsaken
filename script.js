@@ -384,6 +384,8 @@ const mapRoot = new THREE.Group();
 scene.add(mapRoot);
 const maps = new Map();
 let activeMapId = null;
+let activeMapSyncRef = null;
+let mapSyncReady = false;
 let activeColliders = [];
 let activeWalkSurfaces = [];
 let hitboxDebugEnabled = false;
@@ -583,6 +585,135 @@ function buildMesaMap() {
   return { name: "Mesa Outpost", group, collisionObjects, background: 0x2a1f1a };
 }
 
+function buildFoundryMap() {
+  const group = new THREE.Group();
+  const collisionObjects = [];
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(130, 130),
+    new THREE.MeshStandardMaterial({ color: 0x23262b })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.userData.isGround = true;
+  group.add(ground);
+  collisionObjects.push(ground);
+
+  const steel = new THREE.MeshStandardMaterial({ color: 0x4a5566 });
+  const hazard = new THREE.MeshStandardMaterial({ color: 0x8a3c2a });
+
+  const catwalkA = new THREE.Mesh(new THREE.BoxGeometry(30, 1, 5), steel);
+  catwalkA.position.set(-22, 3.2, 8);
+  const catwalkB = new THREE.Mesh(new THREE.BoxGeometry(22, 1, 5), steel);
+  catwalkB.position.set(20, 5.2, -12);
+  const rampA = new THREE.Mesh(new THREE.BoxGeometry(16, 1.2, 6), hazard);
+  rampA.position.set(-4, 2.7, 16);
+  rampA.rotation.z = -0.3;
+  rampA.userData.isRamp = true;
+  const tankA = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 7, 12), steel);
+  tankA.position.set(10, 3.5, 18);
+  tankA.userData.colliderType = "cylinder";
+  const tankB = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 6, 12), steel);
+  tankB.position.set(-30, 3, -18);
+  tankB.userData.colliderType = "cylinder";
+  const wallA = new THREE.Mesh(new THREE.BoxGeometry(36, 6, 2), steel);
+  wallA.position.set(26, 3, 24);
+  const wallB = new THREE.Mesh(new THREE.BoxGeometry(2, 6, 30), steel);
+  wallB.position.set(-34, 3, 8);
+
+  [catwalkA, catwalkB, rampA, tankA, tankB, wallA, wallB].forEach((mesh) => {
+    group.add(mesh);
+    collisionObjects.push(mesh);
+  });
+
+  return { name: "Iron Foundry", group, collisionObjects, background: 0x171b22 };
+}
+
+function buildGlacierMap() {
+  const group = new THREE.Group();
+  const collisionObjects = [];
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(150, 150),
+    new THREE.MeshStandardMaterial({ color: 0xd4e2ef })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.userData.isGround = true;
+  group.add(ground);
+  collisionObjects.push(ground);
+
+  const ice = new THREE.MeshStandardMaterial({ color: 0x8eb8d6 });
+  const stone = new THREE.MeshStandardMaterial({ color: 0x6f7f91 });
+
+  const ridgeA = new THREE.Mesh(new THREE.BoxGeometry(20, 4, 12), stone);
+  ridgeA.position.set(-30, 2, -20);
+  const ridgeB = new THREE.Mesh(new THREE.BoxGeometry(14, 5, 18), stone);
+  ridgeB.position.set(24, 2.5, 22);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(26, 1, 4), ice);
+  bridge.position.set(-2, 4.8, -2);
+  const ramp = new THREE.Mesh(new THREE.BoxGeometry(18, 1, 8), ice);
+  ramp.position.set(4, 2.6, -24);
+  ramp.rotation.z = 0.28;
+  ramp.userData.isRamp = true;
+  const pillarA = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 8, 10), ice);
+  pillarA.position.set(0, 4, 30);
+  pillarA.userData.colliderType = "cylinder";
+  const pillarB = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 8, 10), ice);
+  pillarB.position.set(36, 4, -4);
+  pillarB.userData.colliderType = "cylinder";
+
+  [ridgeA, ridgeB, bridge, ramp, pillarA, pillarB].forEach((mesh) => {
+    group.add(mesh);
+    collisionObjects.push(mesh);
+  });
+
+  return { name: "Glacier Pass", group, collisionObjects, background: 0xc5d9e8 };
+}
+
+function buildSanctumMap() {
+  const group = new THREE.Group();
+  const collisionObjects = [];
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(135, 135),
+    new THREE.MeshStandardMaterial({ color: 0x2a2433 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.userData.isGround = true;
+  group.add(ground);
+  collisionObjects.push(ground);
+
+  const temple = new THREE.MeshStandardMaterial({ color: 0x5b4f6a });
+  const accents = new THREE.MeshStandardMaterial({ color: 0x8c6f9e });
+
+  const dais = new THREE.Mesh(new THREE.BoxGeometry(20, 2, 20), temple);
+  dais.position.set(0, 1, 0);
+  const archA = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 18), temple);
+  archA.position.set(-18, 4, 0);
+  const archB = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 18), temple);
+  archB.position.set(18, 4, 0);
+  const stairA = new THREE.Mesh(new THREE.BoxGeometry(14, 1, 5), accents);
+  stairA.position.set(0, 1.7, -16);
+  stairA.rotation.x = -0.2;
+  stairA.userData.isRamp = true;
+  const stairB = new THREE.Mesh(new THREE.BoxGeometry(14, 1, 5), accents);
+  stairB.position.set(0, 1.7, 16);
+  stairB.rotation.x = 0.2;
+  stairB.userData.isRamp = true;
+  const towerA = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 10, 12), temple);
+  towerA.position.set(-28, 5, -24);
+  towerA.userData.colliderType = "cylinder";
+  const towerB = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 10, 12), temple);
+  towerB.position.set(28, 5, 24);
+  towerB.userData.colliderType = "cylinder";
+
+  [dais, archA, archB, stairA, stairB, towerA, towerB].forEach((mesh) => {
+    group.add(mesh);
+    collisionObjects.push(mesh);
+  });
+
+  return { name: "Night Sanctum", group, collisionObjects, background: 0x191622 };
+}
+
 function registerMap(id, builder) {
   if (maps.has(id)) {
     const oldMap = maps.get(id);
@@ -596,6 +727,9 @@ function registerMap(id, builder) {
 
 registerMap("ruins", buildRuinsMap);
 registerMap("mesa", buildMesaMap);
+registerMap("foundry", buildFoundryMap);
+registerMap("glacier", buildGlacierMap);
+registerMap("sanctum", buildSanctumMap);
 
 function setActiveMap(id, silent = false) {
   const map = maps.get(id);
@@ -645,6 +779,21 @@ function setActiveMap(id, silent = false) {
 
   if (!silent) {
     showNotification(`Map switched to ${map.name}`, "success");
+  }
+}
+
+function requestMapSwitch(mapId) {
+  if (!maps.has(mapId)) return;
+  setActiveMap(mapId);
+
+  if (mapSyncReady && activeMapSyncRef && window.firebaseSet) {
+    window.firebaseSet(activeMapSyncRef, {
+      id: mapId,
+      by: myPlayerId,
+      ts: Date.now()
+    }).catch((error) => {
+      console.error("Failed to sync map switch:", error);
+    });
   }
 }
 
@@ -1063,7 +1212,7 @@ function bindMapCard(card) {
   card.addEventListener('click', () => {
     const mapId = card.getAttribute('data-map');
     if (!mapId) return;
-    setActiveMap(mapId);
+    requestMapSwitch(mapId);
     byId('mapsOverlay')?.classList.remove('visible');
     byId('mainMenuOverlay')?.classList.remove('visible');
     gamePaused = false;
@@ -1144,6 +1293,9 @@ function syncCustomMapsFromStorage() {
 }
 
 document.querySelectorAll('.map-card').forEach(bindMapCard);
+ensureMapCard("foundry", "Iron Foundry", "Industrial arena with catwalks and tanks.");
+ensureMapCard("glacier", "Glacier Pass", "Icy canyon featuring bridges and pillars.");
+ensureMapCard("sanctum", "Night Sanctum", "Temple battleground with raised central platform.");
 syncCustomMapsFromStorage();
 
 // ---------- Particle Systems ----------
@@ -1365,6 +1517,8 @@ function initMultiplayer() {
 
   myPlayerRef = ref(db, `players/${myPlayerId}`);
   const playersRef = ref(db, 'players');
+  activeMapSyncRef = ref(db, 'gameState/activeMap');
+  mapSyncReady = true;
 
   onDisconnect(myPlayerRef).remove().catch(err => console.error("Disconnect handler error:", err));
 
@@ -1392,6 +1546,29 @@ function initMultiplayer() {
       }
     });
   }, err => console.error("Error listening to players:", err));
+
+  onValue(activeMapSyncRef, (snapshot) => {
+    const payload = snapshot.val();
+    if (!payload?.id) {
+      if (activeMapId && window.firebaseSet) {
+        window.firebaseSet(activeMapSyncRef, {
+          id: activeMapId,
+          by: myPlayerId,
+          ts: Date.now()
+        }).catch((error) => console.error("Failed to initialize shared map:", error));
+      }
+      return;
+    }
+
+    if (!maps.has(payload.id)) return;
+    if (payload.id === activeMapId) return;
+
+    setActiveMap(payload.id, true);
+    if (payload.by && payload.by !== myPlayerId) {
+      const mapName = maps.get(payload.id)?.name || payload.id;
+      showNotification(`Map synced: ${mapName}`, "info");
+    }
+  }, err => console.error("Error listening to shared map state:", err));
 
   if (multiplayerTickIntervalId) clearInterval(multiplayerTickIntervalId);
   multiplayerTickIntervalId = setInterval(() => {
