@@ -651,10 +651,15 @@ function setActiveMap(id, silent = false) {
 function getPlayerSampleCenters(position) {
   const r = playerCollider.radius;
   const h = playerCollider.height;
+  const side = r * 0.65;
   return [
     new THREE.Vector3(position.x, position.y + r, position.z),
     new THREE.Vector3(position.x, position.y + h * 0.5, position.z),
-    new THREE.Vector3(position.x, position.y + h - r, position.z)
+    new THREE.Vector3(position.x, position.y + h - r, position.z),
+    new THREE.Vector3(position.x + side, position.y + r, position.z),
+    new THREE.Vector3(position.x - side, position.y + r, position.z),
+    new THREE.Vector3(position.x, position.y + r, position.z + side),
+    new THREE.Vector3(position.x, position.y + r, position.z - side)
   ];
 }
 
@@ -906,7 +911,8 @@ function movePlayerWithCollision(currentPos, moveDelta) {
     return snapPlayerToWalkableSurface(depenetrated, currentPos.y);
   }
 
-  const stepSize = 0.2;
+  // Smaller motion steps reduce edge tunneling on thin/tilted geometry.
+  const stepSize = 0.12;
   const steps = Math.max(1, Math.ceil(totalDist / stepSize));
   const stepDelta = moveDelta.clone().multiplyScalar(1 / steps);
 
